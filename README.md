@@ -77,7 +77,7 @@ sequenceDiagram
 
 ### Scenario 3: Response Violation & Termination (L3)
 
-This diagram shows the circuit breaker in action. The stream begins, but an async check on the response (L3) detects a violation, tripping the breaker and terminating the stream.
+This diagram shows the circuit breaker in action. The stream begins, but an async check on the response (L3) detects a violation, tripping the breaker and terminating the stream. This version avoids complex keywords for maximum compatibility.
 
 ```mermaid
 sequenceDiagram
@@ -89,15 +89,22 @@ sequenceDiagram
     Note over User, LLM: Assumes prompt passed L1 & L2 checks.
     User->>API: GET /chat?prompt=...
     API->>LLM: Start generating response stream
-    loop Streaming & Validation
-        LLM->>API: Yield token
-        API->>User: Stream token
-        API-)+L3: Validate response chunk (async)
-        L3-->>API: **Violation (UNSAFE)**
-        Note over API: Circuit breaker is tripped.
-        API-->>User: Stream termination message
-        break
-    end
+    
+    Note over API: Stream begins...
+    LLM->>API: Yield token (safe)
+    API->>User: Stream token (safe)
+    API-)+L3: Validate chunk (async)
+    L3-)-API: OK
+
+    Note over API: A subsequent token contains a violation.
+    LLM->>API: Yield token (unsafe)
+    API->>User: Stream token (unsafe)
+    API-)+L3: Validate chunk (async)
+    L3-->>API: **Violation (UNSAFE)**
+    Note over API: Circuit breaker is tripped.
+    API-->>User: Stream termination message
+    
+    Note over API, User: Connection is now closed. No more tokens are sent.
 ```
 
 ## Requirements
