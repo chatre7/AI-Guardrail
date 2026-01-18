@@ -29,46 +29,39 @@ The primary goal is to maintain strict brand safety and focus. The chatbot is de
 ```mermaid
 sequenceDiagram
     participant User
-    participant FastAPI as API Endpoint
-    participant L1_Keywords as Guardrail L1 (Keywords)
-    participant L2_Judge as Guardrail L2 (AI Judge - Prompt)
-    participant Chat_LLM as LLM (Chat Model)
-    participant L3_Judge as Guardrail L3 (AI Judge - Response)
+    participant API as FastAPI Endpoint
+    participant L1 as Guardrail L1 (Keywords)
+    participant L2 as Guardrail L2 (AI Judge)
+    participant LLM as LLM (Chat Model)
+    participant L3 as Guardrail L3 (AI Judge)
 
-    User->>API Endpoint: GET /chat?prompt=...
-
-    API Endpoint->>L1_Keywords: Check prompt for keywords
+    User->>API: GET /chat?prompt=...
+    API->>L1: Check prompt
     alt Keyword Found
-        L1_Keywords-->>API Endpoint: Violation
-        API Endpoint-->>User: Return block message
+        L1-->>API: Violation
+        API-->>User: Return block message
     else No Keywords
-        L1_Keywords-->>API Endpoint: OK
-        API Endpoint->>L2_Judge: Validate prompt
+        L1-->>API: OK
+        API->>L2: Validate prompt
         alt Prompt Unsafe
-            L2_Judge-->>API Endpoint: Violation (UNSAFE)
-            API Endpoint-->>User: Return block message
+            L2-->>API: Violation
+            API-->>User: Return block message
         else Prompt Safe
-            L2_Judge-->>API Endpoint: OK (SAFE)
-            API Endpoint->>Chat_LLM: Start generating response stream
-
-            loop Optimistic Streaming & Async Validation
-                Chat_LLM->>API Endpoint: Yield token
-                API Endpoint->>User: Stream token (Low Latency UI)
-                
-                par Async Validation
-                    API Endpoint-)+L3_Judge: Validate response chunk
-                    L3_Judge-)-API Endpoint: Judgement (SAFE/UNSAFE)
-                and Check Circuit Breaker
-                    API Endpoint->>API Endpoint: Is safety_event cleared?
-                end
-
-                alt Violation Detected by L3_Judge
-                    Note over API Endpoint: safety_event is cleared
-                    API Endpoint-->>User: Stream termination message
+            L2-->>API: OK
+            API->>LLM: Start generating response stream
+            loop Streaming & Validation
+                Note over API: Before yielding, check if circuit breaker is tripped.
+                alt Violation was Detected Previously
+                    API-->>User: Stream termination message
                     break
                 end
+                LLM->>API: Yield token
+                API->>User: Stream token (Optimistic UI)
+                API-)+L3: Validate response chunk (async task)
+                Note over L3: If unsafe, judge signals API to trip circuit breaker.
+                L3-)-API: Validation result
             end
-            Chat_LLM-->>API Endpoint: End of stream
+            LLM-->>API: End of stream
         end
     end
 ```
