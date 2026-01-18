@@ -1,3 +1,10 @@
+<p align="center">
+  <img alt="Python Version" src="https://img.shields.io/badge/Python-3.11+-blue?style=for-the-badge&logo=python">
+  <img alt="License" src="https://img.shields.io/badge/License-MIT-green?style=for-the-badge">
+  <img alt="Tests" src="https://img.shields.io/badge/tests-passing-brightgreen?style=for-the-badge">
+  <img alt="Code Style" src="https://img.shields.io/badge/code%20style-black-000000?style=for-the-badge">
+</p>
+
 # SkyHigh Airlines Chatbot (Strict Brand Guardrail PoC)
 
 This project is a Proof-of-Concept (PoC) demonstrating a sophisticated, multi-layered asynchronous guardrail architecture for a customer service chatbot. It is built with FastAPI and uses a local LLM via Ollama.
