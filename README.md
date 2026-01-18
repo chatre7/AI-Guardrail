@@ -24,6 +24,55 @@ The primary goal is to maintain strict brand safety and focus. The chatbot is de
 5.  **Layer 3 Check**: As the response is being generated, the text is accumulated. Periodically (based on `CHECK_INTERVAL`), chunks of the response are sent to the `JUDGE_MODEL` for ongoing validation in the background.
 6.  **Circuit Breaker**: If at any point the `JUDGE_MODEL` returns `UNSAFE`, the `is_safe_event` is cleared, the main streaming loop breaks, and a final termination message is sent to the user.
 
+## Architecture Diagram
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant FastAPI as API Endpoint
+    participant L1_Keywords as Guardrail L1 (Keywords)
+    participant L2_Judge as Guardrail L2 (AI Judge - Prompt)
+    participant Chat_LLM as LLM (Chat Model)
+    participant L3_Judge as Guardrail L3 (AI Judge - Response)
+
+    User->>API Endpoint: GET /chat?prompt=...
+
+    API Endpoint->>L1_Keywords: Check prompt for keywords
+    alt Keyword Found
+        L1_Keywords-->>API Endpoint: Violation
+        API Endpoint-->>User: Return block message
+    else No Keywords
+        L1_Keywords-->>API Endpoint: OK
+        API Endpoint->>L2_Judge: Validate prompt
+        alt Prompt Unsafe
+            L2_Judge-->>API Endpoint: Violation (UNSAFE)
+            API Endpoint-->>User: Return block message
+        else Prompt Safe
+            L2_Judge-->>API Endpoint: OK (SAFE)
+            API Endpoint->>Chat_LLM: Start generating response stream
+
+            loop Optimistic Streaming & Async Validation
+                Chat_LLM->>API Endpoint: Yield token
+                API Endpoint->>User: Stream token (Low Latency UI)
+                
+                par Async Validation
+                    API Endpoint-)+L3_Judge: Validate response chunk
+                    L3_Judge-)-API Endpoint: Judgement (SAFE/UNSAFE)
+                and Check Circuit Breaker
+                    API Endpoint->>API Endpoint: Is safety_event cleared?
+                end
+
+                alt Violation Detected by L3_Judge
+                    Note over API Endpoint: safety_event is cleared
+                    API Endpoint-->>User: Stream termination message
+                    break
+                end
+            end
+            Chat_LLM-->>API Endpoint: End of stream
+        end
+    end
+```
+
 ## Requirements
 
 - Python 3.8+
