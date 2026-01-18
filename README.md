@@ -24,7 +24,13 @@ The primary goal is to maintain strict brand safety and focus. The chatbot is de
 5.  **Layer 3 Check**: As the response is being generated, the text is accumulated. Periodically (based on `CHECK_INTERVAL`), chunks of the response are sent to the `JUDGE_MODEL` for ongoing validation in the background.
 6.  **Circuit Breaker**: If at any point the `JUDGE_MODEL` returns `UNSAFE`, the `is_safe_event` is cleared, the main streaming loop breaks, and a final termination message is sent to the user.
 
-## Architecture Diagram
+## Architecture Diagrams
+
+The architecture uses a multi-layered approach. The flow can be broken down into three main scenarios.
+
+### Scenario 1: Prompt Violation (L1 or L2)
+
+This diagram shows the flow when a user's prompt is blocked by either the keyword filter (L1) or the initial AI judge check (L2).
 
 ```mermaid
 sequenceDiagram
@@ -32,8 +38,6 @@ sequenceDiagram
     participant API as FastAPI Endpoint
     participant L1 as Guardrail L1 (Keywords)
     participant L2 as Guardrail L2 (AI Judge)
-    participant LLM as LLM (Chat Model)
-    participant L3 as Guardrail L3 (AI Judge)
 
     User->>API: GET /chat?prompt=...
     API->>L1: Check prompt
@@ -43,26 +47,56 @@ sequenceDiagram
     else No Keywords
         L1-->>API: OK
         API->>L2: Validate prompt
-        alt Prompt Unsafe
-            L2-->>API: Violation
-            API-->>User: Return block message
-        else Prompt Safe
-            L2-->>API: OK
-            API->>LLM: Start generating response stream
-            loop Streaming & Validation
-                Note over API: Before yielding, check if circuit breaker is tripped.
-                alt Violation was Detected Previously
-                    API-->>User: Stream termination message
-                    break
-                end
-                LLM->>API: Yield token
-                API->>User: Stream token (Optimistic UI)
-                API-)+L3: Validate response chunk (async task)
-                Note over L3: If unsafe, judge signals API to trip circuit breaker.
-                L3-)-API: Validation result
-            end
-            LLM-->>API: End of stream
-        end
+        L2-->>API: Violation (UNSAFE)
+        API-->>User: Return block message
+    end
+```
+
+### Scenario 2: Successful Stream (Happy Path)
+
+This diagram shows the "happy path" where the prompt is safe and the entire response is streamed without violations.
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant API as FastAPI Endpoint
+    participant LLM as LLM (Chat Model)
+    participant L3 as Guardrail L3 (AI Judge)
+
+    Note over User, LLM: Assumes prompt passed L1 & L2 checks.
+    User->>API: GET /chat?prompt=...
+    API->>LLM: Start generating response stream
+    loop Streaming & Validation (All chunks are SAFE)
+        LLM->>API: Yield token
+        API->>User: Stream token
+        API-)+L3: Validate response chunk (async)
+        L3-)-API: OK
+    end
+    LLM-->>API: End of stream
+```
+
+### Scenario 3: Response Violation & Termination (L3)
+
+This diagram shows the circuit breaker in action. The stream begins, but an async check on the response (L3) detects a violation, tripping the breaker and terminating the stream.
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant API as FastAPI Endpoint
+    participant LLM as LLM (Chat Model)
+    participant L3 as Guardrail L3 (AI Judge)
+
+    Note over User, LLM: Assumes prompt passed L1 & L2 checks.
+    User->>API: GET /chat?prompt=...
+    API->>LLM: Start generating response stream
+    loop Streaming & Validation
+        LLM->>API: Yield token
+        API->>User: Stream token
+        API-)+L3: Validate response chunk (async)
+        L3-->>API: **Violation (UNSAFE)**
+        Note over API: Circuit breaker is tripped.
+        API-->>User: Stream termination message
+        break
     end
 ```
 
