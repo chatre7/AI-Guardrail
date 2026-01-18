@@ -1,0 +1,24 @@
+# docker-compose.yaml
+version: '3.8'
+
+services:
+  chatbot_api:
+    build: .
+    container_name: skyhigh_chatbot_api
+    restart: always
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    volumes:
+      - .:/app
+    # On Linux, this makes the containerized app communicate with the host's Ollama instance.
+    # For Windows/Mac, Ollama running on the host is accessible via `host.docker.internal`.
+    # You might need to adjust the OLLAMA_HOST environment variable inside your application
+    # or here if the default (localhost) doesn't work.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+# Note: This setup assumes you are running the Ollama service on your host machine.
+# To run Ollama as a separate container, you would define another service here
+# and configure the chatbot_api to point to it.

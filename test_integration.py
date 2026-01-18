@@ -18,6 +18,16 @@ from main import API_KEY, API_KEY_NAME, MAX_PROMPT_LENGTH, app
 pytestmark = pytest.mark.asyncio
 
 
+async def test_health_endpoint_returns_ok() -> None:
+    """
+    Tests that the /health endpoint is reachable and returns a 200 OK.
+    """
+    async with AsyncClient(app=app, base_url="http://test") as client:
+        response = await client.get("/health")
+    assert response.status_code == 200
+    assert response.json() == {"status": "ok"}
+
+
 @pytest.fixture(scope="module")
 def api_headers() -> Dict[str, str]:
     """Provides valid API headers for authenticated requests."""
